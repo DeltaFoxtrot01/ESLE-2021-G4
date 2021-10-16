@@ -1,0 +1,15 @@
+version: '3'
+services:
+  cassandra:
+    image: cassandra:latest
+    volumes:
+      - dbdata:/var/lib/cassandra
+      - /home/ddmdavid/second_disk/IST/5ano/ESLE/ESLE-2021-G4/cassandra-2.yaml:/etc/cassandra/cassandra.yaml
+    networks:
+      - main_2
+    deploy:
+      replicas: 1
+networks:
+  main_2:
+volumes:
+  dbdata:

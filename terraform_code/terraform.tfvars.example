@@ -1,0 +1,8 @@
+aws_access_key = "<ACCESS KEY>"
+aws_secret_key = "<SECRET KEY>"
+aws_region = "eu-west-1"
+
+cluster_name = "main cluster"
+
+tag = "Themis"
+ssh_key = "general-key-pair"
