@@ -22,3 +22,7 @@ output "eks_identity" {
 output "eks_arn" {
   value = aws_eks_cluster.eks_panel_cluster.arn
 }
+
+output "assume_role_policy" {
+  value = data.aws_iam_policy_document.assume_role_policy
+}

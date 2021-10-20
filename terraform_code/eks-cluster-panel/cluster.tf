@@ -37,7 +37,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
     condition {
       test     = "StringEquals"
       variable = "${replace(aws_iam_openid_connect_provider.open_id_connect_provider.url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:kube-system:aws-node"]
+      values   = ["system:serviceaccount:kube-system:aws-node","system:serviceaccount:kube-system:aws-load-balancer-controller"]
     }
 
     principals {
@@ -46,6 +46,8 @@ data "aws_iam_policy_document" "assume_role_policy" {
     }
   }
 }
+
+
 
 #these policies are placed here as they refer to cluster add ons
 

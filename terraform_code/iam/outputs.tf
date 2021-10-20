@@ -16,5 +16,5 @@ output "policies" {
 }
 
 output "lb_role" {
-  value = aws_iam_role.iam_lb_policy
+  value = aws_iam_role.iam_lb_role
 }

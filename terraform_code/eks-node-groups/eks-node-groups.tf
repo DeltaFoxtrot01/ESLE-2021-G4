@@ -9,8 +9,8 @@ resource "aws_eks_node_group" "private_large_node_group" {
   instance_types = ["c4.2xlarge"]
 
   scaling_config {
-    desired_size = 4
-    max_size = 5
+    desired_size = 1
+    max_size = 1
     min_size = 1
   }
 
@@ -34,9 +34,9 @@ resource "aws_eks_node_group" "private_small_node_group" {
   instance_types = ["c4.xlarge"]
 
   scaling_config {
-    desired_size = 5
-    max_size = 6
-    min_size = 3
+    desired_size = 1
+    max_size = 1
+    min_size = 1
   }
 
   remote_access {

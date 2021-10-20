@@ -40,6 +40,7 @@ module "iam" {
   source = "./iam"
 
   tag = var.tag
+  assume_role_policy = module.eks_cluster_panel.assume_role_policy
 }
 
 
@@ -110,11 +111,12 @@ module "helm_packages" {
   vpcId = module.network.vpc.id
 }
 
-output "print" {
-  value = module.iam.lb_role
-}
-
 module "k8_objects" {
-  count = 1
   source = "./k8_objects"
+
+  depends_on = [
+    module.eks_cluster_private_large_nodes,
+    module.helm_packages,
+    module.k8_service_account
+  ]
 }

@@ -49,21 +49,9 @@ resource "aws_iam_policy" "eks_worknode_ebs_policy" {
 POLICY
 }
 
-resource "aws_iam_role" "iam_lb_policy" {
+resource "aws_iam_role" "iam_lb_role" {
   name = "AmazonEKSLoadBalancerControllerRole"
-
-  assume_role_policy = jsonencode({
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Principal": {
-          "Service": "eks.amazonaws.com"
-        },
-        "Action": "sts:AssumeRole"
-      }
-    ]
-  })
+  assume_role_policy = var.assume_role_policy.json
 }
 
 resource "aws_iam_policy" "lb_policy" {
@@ -71,6 +59,10 @@ resource "aws_iam_policy" "lb_policy" {
   policy = file("${path.module}/iam_lb_policy.json")
 }
 
+resource "aws_iam_policy" "vl_policy" {
+  name = "AmazonEKS_EBS_CSI_Driver_Policy"
+  policy = file("${path.module}/iam_vl_policy.json")
+}
 
 resource "aws_iam_role_policy_attachment" "eks-cluster-volume-claim-policy" {
   policy_arn = aws_iam_policy.eks_worknode_ebs_policy.arn
@@ -89,6 +81,10 @@ resource "aws_iam_role_policy_attachment" "eks-cluster-role-AmazonEKSServicePoli
 
 resource "aws_iam_role_policy_attachment" "eks-cluster-role-lb-policy" {
   policy_arn = aws_iam_policy.lb_policy.arn
-  role = aws_iam_role.iam_lb_policy.name
+  role = aws_iam_role.iam_lb_role.name
 }
 
+resource "aws_iam_role_policy_attachment" "eks-cluster-role-vl-policy" {
+  policy_arn = aws_iam_policy.vl_policy.arn
+  role = aws_iam_role.iam_lb_role.name
+}

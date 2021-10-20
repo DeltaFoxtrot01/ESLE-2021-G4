@@ -1,7 +1,7 @@
 
 
 resource "kubernetes_service" "load_balancer" {
-  count = 1
+
   metadata {
     name = "main-lb"
     annotations = {
@@ -14,17 +14,37 @@ resource "kubernetes_service" "load_balancer" {
   spec {
     type = "LoadBalancer"
     selector = {
-        "own-pod" = "cassandra"
+      app = "cassandra-services"
+    }
+
+    port {
+      name = "cassandra-port1"
+      port = 9042
+      target_port = 9042
     }
     port {
-        name = "cassandra-port1"
-        port = 9042
-        target_port = 9042
-    }
-    port {
-        name = "cassandra-port2"
-        port = 9160
-        target_port = 9160
+      name = "cassandra-port2"
+      port = 9160
+      target_port = 9160
     }    
+
+    port {
+      name = "cassandra-port3"
+      port = 7001
+      target_port = 7001
+    }
+    
+    port {
+      name = "cassandra-port4"
+      port = 7199
+      target_port = 7199
+    }
+
+    port {
+      name = "http"
+      port = 80
+      target_port = 80
+    }
+
   }
 }
