@@ -1,5 +1,21 @@
 # ESLE-2021-G4
 
+## Kubernetes Cluster
+
+In order to study cassandra, a kubernetes cluster was deployed in AWS using EKS together with EC2 instances.
+
+The cluster has the following representation:
+
+<put image here>
+
+The used instances are the c4.2xlarge type, with the following specs:
+- vCPU: 8
+- RAM: 15GB
+- Bandwidth: 1000 Mbps
+- Disk size: 20GB
+
+There is a separate Instance which is used to execute the Cassandra stress client.
+
 ## Cassandra Stress
 
 ### Building
