@@ -2,11 +2,11 @@
 
 ## Kubernetes Cluster
 
-In order to study cassandra, a kubernetes cluster was deployed in AWS using EKS together with EC2 instances.
+To create an environment to study cassandra, a kubernetes cluster was deployed in AWS using EKS together with EC2 instances.
 
 The cluster has the following representation:
 
-<put image here>
+<img src="clusterEsle.png" width=800px/>
 
 The used instances are the c4.2xlarge type, with the following specs:
 - vCPU: 8
@@ -15,6 +15,50 @@ The used instances are the c4.2xlarge type, with the following specs:
 - Disk size: 20GB
 
 There is a separate Instance which is used to execute the Cassandra stress client.
+
+NOTE: The resources presented are not in the free tier. Creating the resources will have a cost!
+
+### Building
+
+Creating the cluster has four requirements:
+- An AWS account
+- Have Terraform installed -> https://www.terraform.io/downloads.html
+- Have AWS's CLI installed -> https://aws.amazon.com/pt/cli/
+- Have kubectl installed -> https://kubernetes.io/docs/tasks/tools/
+
+To build the cluster it is required to:
+- obtain access keys in the AWS security credentials console
+- move to the 'terraform_code' folder
+- create a copy of the terraform.tfvars.example and rename it to terraform.tfvars
+- replace the values in 'terraform.tfvars' with the required credentials 
+
+Only when these instructions are complete then it is possible to build the cluster.
+
+To create all resources, execute the following command:
+- terraform apply
+
+Verify if there aren't any problems and confirm by typing 'yes'.
+
+After the operation is complete, the cluster is setup and running cassandra. 
+To use kubectl, it must be configured first with the cluster credentials:
+- aws eks --region `<used region>` update-kubeconfig --name `<cluster name>` --profile `<used profile>`
+
+All resources refering directly to the cluster are created in the 'default' namespace.
+
+### Cleaning all resources
+
+Terraform is not deleting correctly the resources in the right order. It is necessary to destroy the resources of kubernetes first, and move forward with the rest.
+
+To destroy the existing services (destroying the load balancer in the process) run:
+- kubectl delete service --all
+
+Then it is necessary to delete the terraform state refering to the kubernetes objects:
+- terraform state rm 'module.k8_objects'
+- terraform state rm 'module.helm_packages'
+- terraform state rm 'module.k8_service_account'
+
+To finish the process, it is only necessary to execute:
+- terraform destroy
 
 ## Cassandra Stress
 

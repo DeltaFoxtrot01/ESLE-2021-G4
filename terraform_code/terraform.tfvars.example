@@ -4,5 +4,5 @@ aws_region = "eu-west-1"
 
 cluster_name = "main cluster"
 
-tag = "Themis"
+tag = "ESLE"
 ssh_key = "general-key-pair"
