@@ -1,6 +1,7 @@
 
 
 resource "aws_eks_node_group" "private_large_node_group" {
+  count = 0
   cluster_name = var.cluster_name
   node_group_name = "${var.cluster_name}-private-large-nodes"
   node_role_arn = var.node_role.arn
@@ -31,12 +32,12 @@ resource "aws_eks_node_group" "private_small_node_group" {
   node_role_arn = var.node_role.arn
   subnet_ids = var.public_subnets
 
-  instance_types = ["c4.xlarge"]
+  instance_types = ["c4.2xlarge"]
 
   scaling_config {
-    desired_size = 1
-    max_size = 1
-    min_size = 1
+    desired_size = 11
+    max_size = 11
+    min_size = 11
   }
 
   remote_access {
