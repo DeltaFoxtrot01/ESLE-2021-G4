@@ -1,5 +1,12 @@
 # ESLE-2021-G4
 
+## Structure
+
+- docker_swarm - Deployment using docker swarm
+- report - Source of the generated report
+- stress - `cassandra-stress` stuff: Dockerfile, results and workloads 
+- terraform_code - Terraform configuration to deploy system in AWS with Kubernetes
+
 ## Kubernetes Cluster
 
 To create an environment to study cassandra, a kubernetes cluster was deployed in AWS using EKS together with EC2 instances.
@@ -96,12 +103,18 @@ Lastly, we can also pass the flag `-rate` and give it `threads=N`, `threads>=N` 
 So, an example run can be:
 
 ```
-docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml duration=1m "ops(usr.insert=1,usr.login=5,tweet.insert=30,tweet.user=50)" -node cass_cluster -log file=/data/log level=verbose interval=1s -rate threads=4 -graph file=/data/graph.html
+docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml duration=1m "ops(usr.insert=1,usr.login=5,tweet.insert=30,tweet.user=50)" cl=QUORUM -node cass_cluster -log file=/data/log level=verbose interval=1s -rate threads=4 -graph file=/data/graph.html
 ```
 
 **NOTE:** the `ops` option needs to be inside quotes so it isn't interpreted as a shell function and in this example we assume `cass_cluster` is a cluster known by this container
 
 To obtain our results, we ran these exact commands:
-- `docker blablabla`
--
--
+- `docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=25,tweet.user=50,tweet.count=1,usr.stats=1,usr.insert=3,tweet.insert=6)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
+- `docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=25,tweet.user=50,tweet.count=1,usr.stats=1,usr.insert=3,tweet.insert=6)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=913" -graph file=/data/graph_write.html` - This one is ran only because the tool ran out of memory in the middle of the previous test, so we needed to run it this way (graph files were not generated when the tool failed, so we relied in the log files)
+
+**NOTE:** to run with a single replica, we removed `cl=QUORUM`, which defaults to `LOCAL_ONE`
+
+- Read workload (only with 3 replicas): `docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=1,tweet.user=1)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
+- Write workload (only with 3 replicas): `docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.insert=1,tweet.insert=1)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
+
+NOTE: This AWS domain is not available, it was just what we used when running those commands
