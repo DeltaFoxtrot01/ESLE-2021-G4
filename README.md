@@ -41,7 +41,8 @@ To build the cluster it is required to:
 
 Only when these instructions are complete then it is possible to build the cluster.
 
-To create all resources, execute the following command:
+To create all resources, execute the following commands:
+- terraform init
 - terraform apply
 
 Verify if there aren't any problems and confirm by typing 'yes'.
