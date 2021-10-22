@@ -1,0 +1,160 @@
+\documentclass[runningheads]{llncs}
+\usepackage[utf8]{inputenc}
+\usepackage{biblatex}
+\usepackage{pgfplots}
+
+\addbibresource{ref.bib}
+
+% ISTO ESTÁ UMA GANDA MERDA MAS DEPOIS CORRIGE-SE
+\author{
+    Daniel Matos \email{daniel.m.matos@tecnico.ulisboa.pt} 89429 \and
+    David Martins \email{david.d.martins@tecnico.ulisboa.pt } 89430 \and
+    Pedro Silva \email{pedro.m.e.silva@tecnico.ulisboa.pt} 92540
+}
+
+\institute{Group 4}
+
+\title{ESLE Report}
+\date{October 2021}
+
+\pgfplotsset{
+    every axis/.append
+    style = {
+        scaled y ticks = false
+    }
+}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+For this project, we decided to test a very well-known database, Apache Cassandra\footnote{\url{https://cassandra.apache.org}}.
+We chose it because it is a NoSQL database, which would make it appropriate for scaling-out, and so, appropriate for us to test with multiple nodes, if it could handle more requests. It also features a query language with very similar syntax to SQL which makes it very appealing to change to, coming from the relational database world.\par
+Another reason that lead us to choose this system is because it is used by large players in the industry like Apple\cite{apple}, Netflix\cite{netflix}, Spotify\cite{spotify} and Facebook\cite{instagram}, and is also inspired by the Amazon Dynamo paper\cite{dynamo}. \par
+All of that and the fact that everywhere we look there are claims it has \textbf{linear scalability}, really made us curious to verify if it's real.\par
+We would like to be evaluated in the commit % TODO: PLACEHOLDER
+
+\section{System description}
+% System Description: detailed description of the system, including an analysis of its main characteristics. Description and justification of the selected workload
+
+
+Our system is composed by one or more nodes that will write values in a \textbf{commit log} before data gets stored into Stored String Tables (\textbf{SSTables}) - a type of table that is append only and is stored on disk - and \textbf{memtables} - equal to SSTables, but stored in memory. Nodes get to know other nodes in the network by communicating through Gossip with 3 other nodes, the ones each node knows, and they do this once every second. The obtained information is then persisted so that when a node is restarted, it already knows the members of the cluster.\par
+
+In every row there is a timestamp which is automatically added when a value is written/updated, that is used for versioning and detecting out-of-date records. When a read happens, it has a chance of doing a read-repair, which is an operation that will select only the value with the latest write-timestamp in order to avoid performance degradation (because when a write occurs, a value is not overwritten, it is appended, as stated above, and if we have a lot of read values, it may take a lot of time to check which one has the most recent timestamp).\par
+
+\subsection{Write path}
+Whenever a client wants to write data to the database, it may contact any node in the system to do so. From this point on, the contacted node (called the request's "coordinator") is responsible for satisfying the client's request.
+The data is then passed to a "partitioner" function that determines which node in the system is responsible for holding that same data. Depending on the chosen replication strategy (the way that data is replicated), and the consistency level (the number of nodes that will have to acknowledge a write request), the coordinator and the set of nodes that will write the data, may proceed in different ways to satisfy the initial request.
+
+%TODO: dis meic sens?
+This means that whenever a write request is received at the responsible node (for holding that data), it will look at the next K-1 nodes in the cluster ring (where K is the quorum that reflects our consistency level), and contact them so that the data may be replicated. Once all of these nodes finish writing the data locally, the coordinator will inform the client that the request has been completed.
+
+Locally, when the data arrives at a Cassandra node, it is first written to a "commit log", so as to make sure that all committed transactions will be permanently stored in case that node shuts down. After this, the data is hashed in order to determine which node is responsible for it.
+%In the case where the responsible node is down, then the data is sent and stored temporarily in a "tempnode". Once the responsible node becomes available... ? Não encontrei muita info sobre isto, maybe delete, idk
+Once the data is received by the responsible node, it is then written to the respective "memtable" (an in-memory structure, that will serve as a cache of data partitions for future look ups). It should be noted that the "memtable" has a dynamically (or user specified) allocated amount of memory available, that when completely used, will require a flush to disk - this may have a significant impact in Cassandra's performance. A "memtable" may also be flushed automatically if the maximum amount of time it may stay in memory is reached; and it may also be flushed manually.
+Once the data is stored in disk, the "commit log" is cleared.
+The process of writing to disk involves the creation of "SSTables" (Stored String Tables), a persistent file format that stores the data from "memtables". The data written to these files is ordered (so as to provide fast access), and will never be modified, since "SSTables" can only be merged into new ones, or deleted.
+
+\subsection{Read path}
+Cassandra has a way to ensure that reads are very fast, compared to the writes, because they happen at all nodes, in parallel, and if one is down, we simply read from its replica (in our case, the following node).
+For a read to be performed, the Cassandra cluster uses the following steps according to \cite{simplilearn}:
+\begin{enumerate}
+    \item The coordinator node (the one which received the request), gets the list of nodes to contact, from the primary key.
+    \item The same node checks if the number of available replicas are sufficient to ensure the desired consistency level (if this fails, the read operation is aborted)
+    \item The coordinator contacts the faster node, and awaits for a response
+    \item A digest request (over the same data) is sent to the other replicas and is then compared with the result received from the fastest replica
+    \item If all digests match, data is returned, otherwise we request data to all replicas and return the received result with the latest timestamp. A read-repair\footnote{This is operation is executed only in a part of the total reads made, because it can degrade performance. Basically, it sends the value with the most recent timestamp to all the replicas to keep data consistent across replicas} is then performed
+\end{enumerate}
+
+% Adicionar pipeline ao nível de cada node?????
+% Provavelmente só se tivermos tempo...
+
+\subsection{Selected workload}
+
+In order to test Cassandra, we used \emph{cassandra-stress} which is bundled along with the database and runs requests in batches\footnote{We couldn't find a way to disable batches}. It allow us to define our own schema, perform our own queries and define data distributions, which is very helpful in testing custom schemas.\par
+We decided to create a schema that simulates a simple application, based on Twitter\footnote{\url{https://twitter.com}}, that simply has one table for users and another for tweets. In order to properly test it, we used of a ratio of queries we think can correspond to a real system, so we did a mix of read and write operations. Our queries reflect the following operations by a user: registering, logging in, tweeting, viewing number of tweets by user, viewing users by country and viewing tweets from a user; and the ratio used was:
+\begin{center}
+    \begin{tabular}{|c|c|}
+       \hline
+            Number of Requests & Request \\
+       \hline
+        1 & Viewing number of user tweets \\
+        1 & Viewing number of users by country \\
+        3 & Registering users \\
+        6 & Creating tweets \\
+       25 & Logging in \\
+       50 & Viewing tweets from a user \\
+       \hline
+    \end{tabular}
+\end{center}
+
+In the end, we are performing 77 reads for each 9 writes which we consider good values to test a real scenario of a Twitter-like application using this database.
+
+% Check here
+% https://docs.datastax.com/en/cassandra-oss/3.0/cassandra/architecture/archIntro.html
+% https://docs.datastax.com/en/cassandra-oss/3.0/cassandra/architecture/archGossipAbout.html
+% https://docs.datastax.com/en/cassandra-oss/3.0/cassandra/architecture/archTOC.html
+% https://www.tutorialspoint.com/cassandra/cassandra_architecture.htm
+% https://www.simplilearn.com/tutorials/big-data-tutorial/cassandra-architecture
+% https://www.instaclustr.com/cassandra-architecture/
+% https://www.geeksforgeeks.org/architecture-of-apache-cassandra/
+% https://www.scylladb.com/glossary/sstable/
+
+\section{Results}
+% Results: presentation and discussion of the scalability, performance and stage  pipeline experiments conducted, together with any additional information the group deems relevant to understand the obtained results
+
+In order to obtain better results, we deployed Cassandra in the AWS Cloud, in a Kubernetes cluster with a load balancer, and also allocated an EC2 instance (with 4 vCPUs) to perform the tests, which allowed us to reduce the latency and get better results.\par
+
+For our experiments, we used the \emph{SimpleStrategy} for replication, because it is simpler to setup and doesn't require us to say in which datacenter and rack each Cassandra node is placed. We went for a replication factor of 3, which we considered a reasonable number, since our main goal is not to test reliability, so we decided not to keep it too high, but also not too low.\par
+
+We chose the \textbf{QUORUM} consistency level, which implies that a majority of replicas (that hold the data, in our case at least 2 when using 2 or more nodes) answer to the query, giving us a consistent result, in case there is only one replica, we had to change the consistency level to \textbf{LOCAL\_ONE} (which relies in only one replica), because we couldn't get a quorum of replicas.\par
+
+The tool ran with multiple threads, increasing from 4 (the number of vCPUs) to 1000, and each time it would sum half the current thread count to obtain the next one (default behaviour). This is good for us, because it allows us to fully utilize the CPUs. Also, for each thread count, the test would run until the \underline{standard deviation} of the results got under \textbf{0.2}, which is a behavior built in to it, if we don't state for how long we want the test to run, and we thought this could improve the liability of the data retrieved.\par
+
+The results obtained are expressed in the following graph:
+
+\begin{figure}
+    \begin{center}
+        \begin{tikzpicture}
+            \begin{axis}[
+                domain = 1:6,
+                xtick = {0, ..., 6},
+                ytick = {0, 2000, 4000, ..., 14000},
+                xlabel = {Nodes},
+                ylabel = {Throughput (ops/s)},
+                title = {Maximum throughput per number of nodes},
+            ]
+                \addplot gnuplot [raw gnuplot, draw = none] {plot 'result.dat' title "Obtained" index 0};
+                \addlegendentry{Measured}
+                \addplot gnuplot [raw gnuplot, mark = none] {set xrange[0:7]; plot ((10926.9936043015*x)/(1 + 2.1853462545 * (x + 1) +  0.0326683783 * x * (x-1))) index 1};
+                \addlegendentry{Regression}
+            \end{axis}
+        \end{tikzpicture}
+    \end{center}
+    \caption{Apache Cassandra measured throughput and scalability function}
+\end{figure}
+
+We can see there is a big drop when we change from 1 node to 2 nodes, or even 3, because the number of replicas we need to contact increases, due to the consistency level used. After that, increasing doesn't affect the number of requests we are able to serve because the replication factor is 3, so the number of replicas contacted by the coordinator stays roughly the same.
+% Isto está um bocado confuso, idk
+We observe some variance possibly, because the load balancer can select any of the deployed nodes, so the coordinator may or may not hold the data we want to retrieve, and in the latter case, we need to contact 3 more nodes, while in the former, we only contact 2.\par
+
+The fluctuations observed when using a number of nodes between 3 and 6 can be justified because Cassandra is developed in Java and since we make really big tests, a part of the time might be spent doing garbage collection which really impacts performance, but we can observe that it stays at around 5300 operations \textit{per} second. \par
+
+With the obtained results, we then made a regression using a tool provided in the labs, in order to calculate an estimate on the scalability parameters and calculate the scalability function for this system. The obtained expression, also drawn in the graph, is:
+
+\[ \frac{10926.9936043015 * N}{1 + 2.1853462545 * (N + 1) +  0.0326683783 * N * (N - 1)} \]
+
+With this information, we can see that this system has very high performance with 1 replica - we could also easily observe this by looking at the graph, since it has the highest throughput -, has a significant serial portion, due to the consistency level used, because we have to wait for at least 2 replicas, which incurs a significant impact in performance. Finally, the crosstalk factor is low, as we would expect, because when we described both the read and write paths, we observed that communication is reduced to the minimum possible, and also because increasing the number of replicas won't add more delay to the network, because the replication factor is static (in our case) and so the number of replicas to contact won't increase.\par
+
+We can see that this system, with our workload and selected consistency level, has \textbf{poor scalability}, since when we start adding more nodes to the database, throughput starts decreasing. One way to counter this, would be to relax our query restrictions (\emph{i.e.} the consistency) so that the synchronization portion of the pipeline could be decreased. Another option would be to store data at only 1 node, without replicas, completely eliminating the serial portion of the pipeline, at the cost of decreasing reliability.
+
+\section{Conclusion}
+% Conclusion: discussion of the main insights obtained
+
+In this work, we took a high level analysis at the Apache Cassandra database in order to analyze its scalability. We implemented a very naive version of a Twitter-like application, so we could better abstract our workload and reason about the queries we would like to make. The chosen consistency level was too high, which made us conclude that Cassandra can't properly scale for our application, however we can conclude that for other applications, with lower consistency requirements, Cassandra can be a game changer, because in our the system didn't start decreasing the throughput indefinitely, only until the appropriate number of replicas was launched, and probably if we relaxed our requirements, the results would be pretty different.\par
+
+\printbibliography
+
+\end{document}
