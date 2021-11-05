@@ -7,10 +7,6 @@ variable "cluster" {
   description = "EKS cluster object"  
 }
 
-variable "private_subnets" {
-  description = "required existing subnets"
-}
-
 variable "public_subnets" {
   description = "required existing public subnets"
 }

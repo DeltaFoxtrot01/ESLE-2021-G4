@@ -1,5 +1,5 @@
 locals {
-  number_of_pods = 1
+  number_of_pods = 2
 }
 
 resource "kubernetes_pod" "cassandra" {
@@ -13,22 +13,45 @@ resource "kubernetes_pod" "cassandra" {
   }
 
   spec {
+
+    init_container {
+      name = "init-cassandra"
+      image = "busybox:latest"
+      command = ["sh", "-c","cp /options/cassandra/cassandra.yaml /etc/cassandra/cassandra.yaml"]
+
+      volume_mount {
+        name = "cassandra-config-temp"
+        mount_path = "/options/cassandra"
+      }
+
+      volume_mount {
+        name = "config-file-holder"
+        mount_path = "/etc/cassandra"
+      } 
+
+    }
     container {
         #image = "yeasy/simple-web:latest"
         image = "cassandra:4.0.1"
         name = "cassandra"
 
-        #env {
-        #  name  = "CASSANDRA_BROADCAST_ADDRESS"
-        #  value = "cassandra-service-${count.index}.default"
-        #}
-#
-        #env {
-        #  name  = "CASSANDRA_SEEDS"
-        #  value = join(",", formatlist("cassandra-service-%s.default", 
-        #                [for x in range(4): x if x != count.index]
-        #              ))
-        #}
+        env {
+          name  = "CASSANDRA_BROADCAST_ADDRESS"
+          value = "cassandra-service-${count.index}.default"
+        }
+
+        env {
+          name  = "CASSANDRA_SEEDS"
+          value = join(",", formatlist("cassandra-service-%s.default", 
+                        [for x in range(4): x if x != count.index]
+                      ))
+        }
+
+        volume_mount {
+          name = "config-file-holder"
+          mount_path = "/etc/cassandra/cassandra.yaml"
+          sub_path = "cassandra.yaml"
+        } 
 
         port {
           container_port = 80
@@ -59,16 +82,24 @@ resource "kubernetes_pod" "cassandra" {
           protocol = "TCP"
         }
     }
+
+    volume {
+      name = "cassandra-config-temp"
+      config_map {
+        name = kubernetes_config_map.cassandra_config.metadata[0].name
+      }
+    }
+
+    volume {
+      name = "config-file-holder"
+      empty_dir {
+        
+      }
+    }
   }
   depends_on = [
     kubernetes_service.cassandra_service
   ]
-
-  #lifecycle {
-  #  ignore_changes = [
-  #    spec[0].container[0].volume_mount
-  #  ]
-  #}
 }
 
 

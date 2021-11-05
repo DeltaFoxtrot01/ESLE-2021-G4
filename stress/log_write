@@ -1,0 +1,97 @@
+******************** Stress Settings ********************
+Command:
+  Type: user
+  Count: -1
+  No Warmup: false
+  Consistency Level: QUORUM
+  Target Uncertainty: 0.020
+  Minimum Uncertainty Measurements: 30
+  Maximum Uncertainty Measurements: 200
+  Command Ratios: {usr.login=25.0, tweet.user=50.0, tweet.count=1.0, usr.stats=1.0, usr.insert=3.0, tweet.insert=6.0}
+  Command Clustering Distribution: clustering=gaussian(1..10)
+  Profile File(s): /data/tweets.yaml,/data/users.yaml
+Rate:
+  Auto: false
+  Thread Count: -1
+  OpsPer Sec: 0
+Population:
+  Distribution: Gaussian:  min=1,max=1000000,mean=500000.500000,stdev=166666.500000
+  Order: ARBITRARY
+  Wrap: false
+Insert:
+  Revisits: Uniform:  min=1,max=1000000
+  Visits: Fixed:  key=1
+  Row Population Ratio: Ratio: divisor=1.000000;delegate=Fixed:  key=1
+  Batch Type: not batching
+Errors:
+  Ignore: false
+  Tries: 10
+Log:
+  No Summary: false
+  No Settings: false
+  File: /data/log_write
+  Interval Millis: 1000
+  Level: VERBOSE
+Mode:
+  API: JAVA_DRIVER_NATIVE
+  Connection Style: CQL_PREPARED
+  CQL Version: CQL3
+  Protocol Version: V5
+  Username: null
+  Password: null
+  Auth Provide Class: null
+  Max Pending Per Connection: 128
+  Connections Per Host: 8
+  Compression: NONE
+Node:
+  Nodes: [52.48.139.58]
+  Is White List: false
+  Datacenter: null
+Schema:
+  Keyspace: null
+  Replication Strategy: org.apache.cassandra.locator.SimpleStrategy
+  Replication Strategy Options: {replication_factor=1}
+  Table Compression: null
+  Table Compaction Strategy: null
+  Table Compaction Strategy Options: {}
+Transport:
+  truststore=null; truststore-password=null; keystore=null; keystore-password=null; ssl-protocol=TLS; ssl-alg=null; ssl-ciphers=TLS_RSA_WITH_AES_128_CBC_SHA,TLS_RSA_WITH_AES_256_CBC_SHA; 
+Port:
+  Native Port: 9042
+  JMX Port: 7199
+Send To Daemon:
+  *not set*
+Graph:
+  File: /data/graph_write.html
+  Revision: unknown
+  Title: null
+  Operation: USER
+TokenRange:
+  Wrap: false
+  Split Factor: 1
+
+******************** Profile(s) ********************
+  Keyspace Name: minitwitter
+  Keyspace CQL: 
+***
+CREATE KEYSPACE minitwitter WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};
+***
+
+  Table Name: tweets
+  Table CQL: 
+***
+CREATE TABLE tweets (id uuid, username text, content text, date timestamp, PRIMARY KEY ((username), id));
+***
+
+  Extra Schema Definitions: null
+  Generator Configs:
+    content: Size: Uniform:  min=1,max=500;
+    username: Size: Uniform:  min=5,max=50;Identity: Uniform:  min=1,max=100000000;
+  Query Definitions:
+    user: CQL:SELECT * FROM tweets WHERE username = ? LIMIT 20;Fields:samerow;
+    count: CQL:SELECT COUNT(id) FROM tweets WHERE username = ?;Fields:samerow;
+    edit: CQL:UPDATE tweets SET content = ?, date = toTimestamp(now()) WHERE username = ? AND id = ?;Fields:samerow;
+  Token Range Queries:
+  Insert Settings:
+    partitions: uniform(1..100)
+    batchtype: LOGGED

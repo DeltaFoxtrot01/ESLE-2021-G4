@@ -1,5 +1,4 @@
 
-
 output "vpc" {
   value = aws_vpc.esle_network
 }
@@ -7,10 +6,6 @@ output "vpc" {
 #main public subnet
 output "public_subnets" {
   value = aws_subnet.public_subnet
-}
-
-output "private_subnets" {
-  value = aws_subnet.private_subnet
 }
 
 output "internet_gateway" {

@@ -5,7 +5,7 @@ resource "aws_eks_cluster" "eks_panel_cluster" {
   version="1.21"
 
   vpc_config {
-    subnet_ids = concat(var.public_subnets, var.private_subnets)
+    subnet_ids = var.public_subnets
   }
 
   depends_on = [ 

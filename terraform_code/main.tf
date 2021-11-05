@@ -31,7 +31,7 @@ provider "aws" {
 module "network" {
   source = "./network"
   region = var.aws_region
-  num_subnets = 2
+  num_subnets = 3
 
   tag = var.tag
 }
@@ -58,7 +58,6 @@ module "eks_cluster_panel" {
   cluster_name = var.cluster_name
 
   public_subnets = [for subnet in module.network.public_subnets : subnet.id]
-  private_subnets = [for subnet in module.network.private_subnets : subnet.id]
   cluster_role = module.iam.cluster_role
   node_role = module.iam.node_role
   tag = var.tag  
@@ -69,7 +68,6 @@ module "eks_cluster_private_large_nodes" {
   cluster_name = var.cluster_name
   cluster = module.eks_cluster_panel.eks_cluster
 
-  private_subnets = [for subnet in module.network.private_subnets : subnet.id]
   public_subnets = [for subnet in module.network.public_subnets : subnet.id]
   security_group = module.security_groups.ssh_group
 
@@ -101,6 +99,9 @@ provider "helm" {
 module "k8_service_account" {
   source = "./k8_service_account"
   aws_lb_policy = module.iam.lb_role
+  depends_on = [
+    module.eks_cluster_panel
+  ]
 }
 
 module "helm_packages" {
@@ -109,6 +110,10 @@ module "helm_packages" {
   service_account_name = module.k8_service_account.service_account_name
   region = var.aws_region
   vpcId = module.network.vpc.id
+
+  depends_on = [
+    module.eks_cluster_panel
+  ]
 }
 
 module "k8_objects" {
@@ -117,6 +122,8 @@ module "k8_objects" {
   depends_on = [
     module.eks_cluster_private_large_nodes,
     module.helm_packages,
-    module.k8_service_account
+    module.k8_service_account,
+    module.eks_cluster_panel
   ]
+
 }

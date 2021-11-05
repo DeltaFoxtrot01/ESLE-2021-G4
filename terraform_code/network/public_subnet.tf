@@ -43,7 +43,7 @@ resource "aws_subnet" "public_subnet" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
   tags = {
     Name = "${var.tag}-public-subnet-${count.index}"
-    "kubernetes.io/role/elb" = 1,
+    "kubernetes.io/role/elb" = count.index == 0 ? 1: 0,
     "kubernetes.io/cluster/esleCluster" = "owned"
   }
 }
