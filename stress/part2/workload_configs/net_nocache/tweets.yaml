@@ -1,0 +1,68 @@
+## Queries: user, count, edit
+
+#
+# Name of the workload
+#
+specname: tweet
+
+#
+# Keyspace info
+#
+keyspace: minitwitter
+
+#
+# Keyspace creation
+#
+keyspace_definition: |
+    CREATE KEYSPACE minitwitter WITH replication = {'class': 'NetworkTopologyStrategy', 'datacenter1': 4};
+
+#
+# Table info
+#
+table: tweets
+
+#
+# Table creation
+#
+table_definition: |
+    CREATE TABLE tweets (id uuid, username text, content text, date timestamp, PRIMARY KEY ((username), id));
+
+#
+# Column info
+#
+# Size - size of the field
+# Population - number of unique values
+# Cluster - clustering key distribution
+columnspec:
+    - name: username
+      size: uniform(5..50)
+      population: uniform(1..100M)
+    - name: content
+      size: uniform(1..500)
+
+#
+# Insert queries
+#
+# Partitions - number of partitions to update (per batch)
+# Select - ratio of rows to insert per partition / total possible rows for the partition
+insert:
+    partitions: uniform(1..100)
+    batchtype: LOGGED
+
+#
+# Queries
+#
+# Fields - fetch prepared parameter from samerow or across all rows of the partition
+queries:
+  # View 20 user tweets
+  user:
+    cql: SELECT * FROM tweets WHERE username = ? LIMIT 20
+    fields: samerow
+  # Count user tweets
+  count:
+    cql: SELECT COUNT(id) FROM tweets WHERE username = ?
+    fields: samerow
+  # Edit tweet
+  edit:
+    cql: UPDATE tweets SET content = ?, date = toTimestamp(now()) WHERE username = ? AND id = ?
+    fields: samerow

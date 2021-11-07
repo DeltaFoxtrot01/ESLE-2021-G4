@@ -1,0 +1,77 @@
+## Queries: login, pass, stats
+
+#
+# Name of the workload
+#
+specname: usr
+
+#
+# Keyspace info
+#
+keyspace: minitwitter
+
+#
+# Keyspace creation
+#
+keyspace_definition: |
+    CREATE KEYSPACE minitwitter WITH replication = {'class': 'NetworkTopologyStrategy', 'datacenter1': 4};
+
+#
+# Table info
+#
+table: users
+
+#
+# Table creation
+#
+table_definition: |
+    CREATE TABLE users (username text, name text, password blob, country text, birth timestamp, PRIMARY KEY ((country), username)) WITH caching = {'keys': 'ALL', 'rows_per_partition': '100'};
+
+#
+# Column info
+#
+# Size - size of the field
+# Population - number of unique values
+# Cluster - clustering key distribution
+columnspec:
+    - name: username
+      size: uniform(5..50)
+      population: uniform(1..100B)
+    - name: name
+      size: uniform(5..200)
+      population: uniform(1..100B)
+    - name: password
+      size: uniform(5..50)
+      population: uniform(1..100B)
+    - name: country
+      size: gaussian(2..4, 2)
+      population: gaussian(1..100)
+    - name: birth
+      population: uniform(1..10K)
+
+#
+# Insert queries
+#
+# Partitions - number of partitions to update (per batch)
+# Select - ratio of rows to insert per partition / total possible rows for the partition
+insert:
+    partitions: uniform(1..10)
+    batchtype: LOGGED
+
+#
+# Queries
+#
+# Fields - fetch prepared parameter from samerow or across all rows of the partition
+queries:
+  # User login
+  login:
+    cql: SELECT password FROM users WHERE country = ? AND username = ? 
+    fields: samerow
+  # Change user password
+  pass:
+    cql: UPDATE users SET password = ? WHERE country = ? AND username = ?
+    fields: samerow
+  # Get country users
+  stats:
+    cql: SELECT country, COUNT(username) FROM users WHERE country = ?
+    fields: samerow
