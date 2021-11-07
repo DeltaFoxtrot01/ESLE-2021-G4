@@ -1,5 +1,5 @@
 locals {
-  number_of_pods = 2
+  number_of_pods = 6
 }
 
 resource "kubernetes_pod" "cassandra" {

@@ -4,9 +4,9 @@ resource "aws_eks_node_group" "basic_node_group" {
   cluster_name = var.cluster_name
   node_group_name = "${var.cluster_name}-public-small-nodes"
   node_role_arn = var.node_role.arn
-  subnet_ids = [var.public_subnets[0]]
+  subnet_ids = var.public_subnets
 
-  instance_types = ["c4.2xlarge"]
+  instance_types = ["c5.2xlarge"]
 
   scaling_config {
     desired_size = 6
