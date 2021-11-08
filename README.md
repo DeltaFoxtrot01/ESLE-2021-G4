@@ -15,11 +15,20 @@ The cluster has the following representation:
 
 <img src="clusterEsle.png" width=800px/>
 
-The used instances are the c4.2xlarge type, with the following specs:
-- vCPU: 8
-- RAM: 15GB
-- Bandwidth: 1000 Mbps
+Two types of instances were used for the experiments were c5.xlarge and c5.2xlarge. These instances have the following specs:
+
+c5.xlarge:
+- vCPU: 4
+- RAM: 8GB
+- Bandwidth: 10 Gbps
 - Disk size: 20GB
+
+c5.2xlarge:
+- vCPU: 8
+- RAM: 16GB
+- Bandwidth: 10 Gbps
+- Disk size: 20GB
+
 
 There is a separate Instance which is used to execute the Cassandra stress client.
 
