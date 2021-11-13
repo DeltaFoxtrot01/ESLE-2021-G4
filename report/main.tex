@@ -138,7 +138,7 @@ The big disparity between the presented specs is interesting, so we decided to v
 \end{itemize}
 
 Both the \textbf{Memtable} and the \textbf{Row Cache} are features of Cassandra, implemented in order to optimise write and read operations respectively, and so we deemed them relevant for our study. For the Row Cache we defined that we want to store 100 entries of each of the tables of our application, and we do this at the time of their creation. We thought this was a reasonable value for our tests, since we don't want to cache very infrequently accessed data but we also don't want to have a lot of cache misses.
-For the memtable, we decided to test with the default value of 2048MB because it would serve as the baseline for comparison with the other value we chose, 512MB, that would fit a lot less mappings to the SSTables and we think will have a noticeable performance impact.
+For the memtable, we decided to test with the default value of 2048MB because it would serve as the baseline for comparison with the other value we chose, 512MB. This value would fit a lot less mappings to the SSTables and we think it will have a noticeable performance impact.
 
 Finally, the \textbf{Replication Strategy} factor was chosen in order to verify if there was a difference between the 2 different replication strategies Cassandra supports:
 
@@ -193,7 +193,7 @@ We performed 2 main separate experiments with two different goals:
     \item Measure the impact of our selected factors in the overall throughput of Apache Cassandra
 \end{itemize}
 
-In order to obtain the best results for our tests, we deployed Cassandra in the AWS Cloud, in a Kubernetes cluster composed of 5 worker nodes, with a load balancer in front of it. We also allocated an EC2 instance for each of the experiments, so we could reduce latency and achieve (ideally) the maximum throughput. All tests were executed in the region of US East N. Virginia and between executions of different tests we erased the database, so we could get the less percentage of errors.
+In order to obtain the best results for our tests, we deployed Cassandra in the AWS Cloud, in a Kubernetes cluster composed of 6 worker nodes, with a load balancer in front of it. We also allocated an EC2 instance for each of the experiments, so we could reduce latency and achieve (ideally) the maximum throughput. All tests were executed in the region of US East N. Virginia and between executions of different tests we erased the database, so we could get a lower percentage of errors.
 
 \subsection{Testing the system scalability}
 
@@ -209,7 +209,7 @@ The tool ran with multiple threads, increasing from 4 (the number of vCPUs) to 1
 
 where $n_i$ represents the current number of threads, and $n_{i-1}$ represents the number of threads used in the previous iteration. The initial number of threads is given by us and it will then iterate all the way to 1000 by default.
 
- This is good for us, because it allows us to fully utilise the CPUs, since the tool uses batches and (we perceived) it waits for output before sending the next one, and with this approach we are able to more efficiently use our CPU and get the best throughput. Also, for each thread count, the test would run until the \underline{standard deviation} of the results got under \textbf{0.2}, which is a behaviour built in to it, if we don't state for how long we want the test to run, and we thought this could improve the liability of the data retrieved, since we only stop the testing when the variance of our data is small, we can have high confidence on the obtained results.\par
+ This is good for us, because it allows us to fully utilise the CPUs, since the tool uses batches and (we perceived) it waits for output before sending the next one, and with this approach we are able to more efficiently use our CPU and get the best throughput. Also, for each thread count, the test would run until the \underline{standard deviation} of the results got under \textbf{0.2}, which is a behaviour built in to it (if we don't state for how long we want the test to run), and we thought this could improve the liability of the data retrieved, since we only stop the testing when the variance of our data is small, we can have high confidence on the obtained results.\par
 
 The results obtained are expressed in the graph in \textbf{Figure~\ref{Graph:scalability}}.
 
