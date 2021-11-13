@@ -4,7 +4,7 @@
 
 - docker_swarm - Deployment using docker swarm
 - report - Source of the generated report
-- stress - `cassandra-stress` stuff: Dockerfile, results and workloads 
+- stress - `cassandra-stress` stuff: Dockerfile, results, graphs and workloads 
 - terraform_code - Terraform configuration to deploy system in AWS with Kubernetes
 
 ## Kubernetes Cluster
@@ -94,13 +94,13 @@ We can now use this image under the name `stress`
 This tool provides us a lot of options for testing against Cassandra clusters, but since we have made our own workloads, we will only use a few of them.
 
 We decided on a simple schema, simulating a small twitter platform, using 2 tables: one for users and other for tweets.
-We have 2 files for `cassandra-stress` in the directory`stress`:
+We have 2 files for `cassandra-stress`, for each of the project stages (for part2 we have more, but they are almost equal and have the same names):
 - `users.yaml` - for testing against the `users` table
 - `tweets.yaml` - for testing against the `tweets` table
 
 In both files we defined a keyspace to run our tests, called `minitwitter`, and in each of them we have the queries to create the tables (if they don't already exist) and also some parameters regarding the size of each column, the number of unique values per column as well as some queries to update and read rows from the database. (Insert queries are automatically handled by `cassandra-stress`).
 
-In order to use our setup, we should mount directory `stress` in the container, so we use pass the flag `--mount type=bind,source="${PWD}"/stress,target=/data` (`/data` is just an arbitrary mount, we used it because it is simpler).
+In order to use our setup, we should mount directory `stress` in the container, so we use pass the flag `--mount type=bind,source="${PWD}"/stress/part1/workload,target=/data` (`/data` is just an arbitrary mount, we used it because it is simpler) - this is for part1, for part2 the directories are slightly different.
 
 For the tool to use our files, we pass the option `user profile=/data/users.yaml,/data/tweets.yaml` we can optionally pass the duration of our tests with `duration=XY` (where `X` is a number and `Y` a unit - `s`, `m`, `h`).
 The next option we need to use is `ops` which allows us to tell the ratio of queries of each type we want to run. Using multiple files we can select the queries using `specname.queryname`, in our case this can be `usr.login`. In case we want for each user that is registered, we want 5 logins, 30 tweets created and 50 tweet reads, the option becomes `ops(usr.insert=1,usr.login=5,tweet.insert=30,tweet.user=50)`.
@@ -118,13 +118,24 @@ docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user pro
 
 **NOTE:** the `ops` option needs to be inside quotes so it isn't interpreted as a shell function and in this example we assume `cass_cluster` is a cluster known by this container
 
+
+#### For part1:
 To obtain our results, we ran these exact commands:
-- `docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=25,tweet.user=50,tweet.count=1,usr.stats=1,usr.insert=3,tweet.insert=6)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
-- `docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=25,tweet.user=50,tweet.count=1,usr.stats=1,usr.insert=3,tweet.insert=6)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=913" -graph file=/data/graph_write.html` - This one is ran only because the tool ran out of memory in the middle of the previous test, so we needed to run it this way (graph files were not generated when the tool failed, so we relied in the log files)
+- `docker run --mount type=bind,source="${PWD}"/stress/part1/workload,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=25,tweet.user=50,tweet.count=1,usr.stats=1,usr.insert=3,tweet.insert=6)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
+- `docker run --mount type=bind,source="${PWD}"/stress/part1/workload,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=25,tweet.user=50,tweet.count=1,usr.stats=1,usr.insert=3,tweet.insert=6)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=913" -graph file=/data/graph_write.html` - This one is ran only because the tool ran out of memory in the middle of the previous test, so we needed to run it this way (graph files were not generated when the tool failed, so we relied in the log files)
 
 **NOTE:** to run with a single replica, we removed `cl=QUORUM`, which defaults to `LOCAL_ONE`
 
-- Read workload (only with 3 replicas): `docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=1,tweet.user=1)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
-- Write workload (only with 3 replicas): `docker run --mount type=bind,source="${PWD}"/stress,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.insert=1,tweet.insert=1)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
+- Read workload (only with 3 replicas): `docker run --mount type=bind,source="${PWD}"/stress/part1/workload,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=1,tweet.user=1)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
+- Write workload (only with 3 replicas): `docker run --mount type=bind,source="${PWD}"/stress/part1/workload,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.insert=1,tweet.insert=1)" cl=QUORUM -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
 
 NOTE: This AWS domain is not available, it was just what we used when running those commands
+
+#### For part2:
+To obtain our results, we ran these exact commands:
+- `docker run --mount type=bind,source="${PWD}"/stress/part2/workload_configs/<test_name>,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=25,tweet.user=50,tweet.count=1,usr.stats=1,usr.insert=3,tweet.insert=6)" cl=<consistency_level> -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=181" -graph file=/data/graph_write.html`
+- `docker run --mount type=bind,source="${PWD}"/stress/part2/workload_configs/<test_name>,target=/data stress user profile=/data/tweets.yaml,/data/users.yaml "ops(usr.login=25,tweet.user=50,tweet.count=1,usr.stats=1,usr.insert=3,tweet.insert=6)" cl=<consistency_level> -node k8s-default-mainlb-1b3a06ed87-6d62077ff579bf3c.elb.eu-west-1.amazonaws.com -log file=/data/log_write level=verbose interval=1s -rate "threads>=913" -graph file=/data/graph_write.html` - This one is ran only because the tool could ran out of memory in the middle of the previous test, so we needed to run it this way (graph files were not generated when the tool failed, so we relied in the log files)
+
+Here, `<test_name>` should be replaced with the type of test we are performing, for example, if we want to run with NetworkTopologyStrategy and row cache, we use `net_rowcache`, or if we want to use SimpleStrategy and no cache, we use the `simple_nocache` directory.
+
+`<consistency_level>` should also be replaced with `ONE` or `QUORUM` depending on the consistency level we want to test.
