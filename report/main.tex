@@ -2,6 +2,9 @@
 \usepackage[utf8]{inputenc}
 \usepackage{biblatex}
 \usepackage{pgfplots}
+\usepackage{array}
+\usepackage{float}
+\usepackage[title]{appendix}
 
 \addbibresource{ref.bib}
 
@@ -26,14 +29,13 @@
 \begin{document}
 
 \maketitle
-
 \section{Introduction}
 
 For this project, we decided to test a very well-known database, Apache Cassandra\footnote{\url{https://cassandra.apache.org}}.
 We chose it because it is a NoSQL database, which would make it appropriate for scaling-out, and so, appropriate for us to test with multiple nodes, if it could handle more requests. It also features a query language with very similar syntax to SQL which makes it very appealing to change to, coming from the relational database world.\par
 Another reason that lead us to choose this system is because it is used by large players in the industry like Apple\cite{apple}, Netflix\cite{netflix}, Spotify\cite{spotify} and Facebook\cite{instagram}, and is also inspired by the Amazon Dynamo paper\cite{dynamo}. All of that and the fact that everywhere we look there are claims it has \textbf{linear scalability}, really made us curious to verify if that's real.\par
 We would like to be evaluated in the commit with the hash: \\
-\textbf{8bf0a995d1564276e80cb77ec18ddb580f61761a} % TODO: PLACEHOLDER
+\textbf{33a52f6f07bad0febcfa197e5865ad16852415e1}
 
 \section{System description}
 % System Description: detailed description of the system, including an analysis of its main characteristics. Description and justification of the selected workload
@@ -44,58 +46,172 @@ Our system is composed by one or more nodes that will write values in a \textbf{
 In every row there is a timestamp which is automatically added when a value is written/updated, that is used for versioning and detecting out-of-date records. When a read happens, it has a chance of doing a \textbf{read-repair}, which is an operation that will select only the value with the latest write-timestamp in order to avoid performance degradation (because when a write occurs, a value is not overwritten, it is appended, as stated above, and if we have a lot of read values, it may take a lot of time to check which one has the most recent timestamp).\par
 
 \subsection{Write path}
-Whenever a client wants to write data to the database, it may contact any node in the system to do so. From this point on, the contacted node - the \textbf{coordinator} - is responsible for satisfying the client's request.
-The data is then passed to a \underline{partitioner} function that determines which node in the system is responsible for holding that same data. Depending on the chosen replication strategy (the way that data is replicated) and the consistency level (the number of nodes that will have to acknowledge a write request), the coordinator and the set of nodes that will store the data may proceed in different ways to satisfy the initial request.\par
-
-This means that whenever the write request is sent to the responsible node (for holding that data), it will look at the next K-1 nodes in the cluster ring (where K is a number depending on the desired consistency level) and contact them so that the data may be replicated (at K nodes in total). Once all of these nodes finish writing the data locally, the coordinator will inform the client that the request has been completed. \par
-
-Locally, when the data arrives at a Cassandra node, it is first written to a \textbf{commit log}, so as to make sure that all committed transactions will be permanently stored in case that node shuts down. After this, the data is then written to the respective \textbf{memtable}. It should be noted that it has a dynamically (or user specified) allocated amount of memory available, that when completely used, will require a flush to disk which may have a significant impact in Cassandra's performance. A \textbf{memtable} can also be flushed manually or automatically if the maximum amount of time it may stay in memory is reached. During the process of writing data to disk, \textbf{SSTables} can be created, and once the data is stored, the \textbf{commit log} is cleared, as stated in \cite{dzone}.\par
+As to how data is written in Cassandra, the system provides a flexible way of doing so. To customise the way data is written in the cluster, we can specify what consistency level (the number of nodes that will have to execute the write operation) and replication strategy (if data is replicated in one \textbf{or} more data centres) we want our system to implement. To perform a write operation, the client contacts any node in the system (which will be referred to as the \textbf{coordinator}), and from then on, Cassandra will abide by the following steps:
+\begin{enumerate}
+    \item The \textbf{coordinator} passes the received data to a \textbf{partitioner} function, which in turn will identify the \textbf{responsible} node for holding that data.
+    \item The \textbf{coordinator} sends the data (to be written) to the \textbf{responsible} node, and will also send it to the next K-1 nodes in the ring (where K is the specified consistency level).
+    \item Each one of these nodes, upon receiving the data, proceed to writing the data to a \textbf{commit log} (to make sure that all committed transactions will be permanently stored in case the node shuts down).
+    \item The nodes continue, writing the data to the respective \textbf{memtable}.
+    \item If the available memory that the \textbf{memtable} has is reached, then a flush to disk is executed (creating a new \textbf{SSTable} \footnote{SSTables are immutable, so any previous SSTables cannot be modified.}), and once the data is stored, the \textbf{commit log} is cleared, as stated in \cite{dzone}.
+    \item The above-mentioned nodes, upon completing the writing process, will warn the \textbf{coordinator}.
+    \item When the confirmations are received at the \textbf{coordinator}, it will let the client know that the request was completed.
+\end{enumerate}
 
 \subsection{Read path}
-Cassandra has a way to ensure that reads are very fast, compared to the writes, because they happen at all nodes, in parallel, and if one is down, we simply read from another replica (in our case, the following node).
+Cassandra has a way to ensure that reads are very fast (compared to the writes) because they happen at all nodes, in parallel, and if one is down, we simply read from another replica.
 For a read to be performed, the Cassandra cluster uses the following steps according to \cite{simplilearn}:
 \begin{enumerate}
-    \item The coordinator node, gets the list of nodes it needs to contact to perform the request, from the primary key.
-    \item It then checks if the number of available replicas are sufficient to ensure the desired consistency level (if this fails, the read operation is aborted)
-    \item The coordinator contacts the fastest node (normally the less distant), and awaits for a response
-    \item A digest request (over the same data) is sent to the other replicas and is then compared with the result received from the fastest replica
-    \item If all digests match, data is returned. Otherwise, we request data to all replicas and return the received result with the latest timestamp, being followed by a read-repair operation.
+    \item The \textbf{coordinator} node, gets the list of nodes it needs to contact to perform the request, from the primary key.
+    \item It then checks if the number of available replicas are sufficient to ensure the desired consistency level (if this fails, the read operation is aborted).
+    \item The \textbf{coordinator} contacts the fastest node (normally the less distant), and awaits for a response.
+    \item A digest request (over the same data) is sent to the other replicas and is then compared with the result received from the fastest replica.
+    \item If all digests match, data is returned. Otherwise, we request data to all replicas and return the received result with the latest timestamp, being followed by a \underline{read-repair} operation.
 \end{enumerate}
 
 \subsection{Selected workload}
 
 In order to test Cassandra, we used \emph{cassandra-stress} which is bundled along with the database and runs requests in batches\footnote{We couldn't find a way to disable batches}. It allows us to define our own schema, perform our own queries and define data distributions, which is very helpful in testing custom application requirements.\par
-We decided to create a schema that simulates a simple application, based on Twitter, that simply has one table for users and another to store tweets. In order to properly test it, we used a ratio of queries we think can correspond to a real system, so we did a mix of read and write operations. Our queries reflect the following operations by a user: registering, logging in, tweeting, viewing number of tweets by user, viewing users by country and viewing tweets from a user; and the ratio we decided was:
-\begin{center}
-    \begin{tabular}{|c|c|}
-       \hline
-            Number of Requests & Request \\
-       \hline
-        1 & Viewing number of user tweets \\
-        1 & Viewing number of users by country \\
-        3 & Registering users \\
-        6 & Creating tweets \\
-       25 & Logging in \\
-       50 & Viewing tweets from a user \\
-       \hline
-    \end{tabular}
-\end{center}
+We decided to create a schema that simulates a simple application, based on Twitter, that simply has one table for users and another to store tweets. In order to properly test it, we used a ratio of queries we think can correspond to a real system, so we did a mix of read and write operations. Our queries reflect the following operations by a user: registering, logging in, tweeting, viewing number of tweets by user, viewing users by country and viewing tweets from a user; and the ratio we decided is represented in \textbf{Table~\ref{Tab:ratios}}.
 
-In the end, we are performing 77 reads for each 9 writes which we consider good values to test a real scenario of a Twitter-like application using this database.\footnote{We had 2 more workloads only testing either read-only or write-only operations, but due to the time it took to obtain results for a single one, we had to opt to only use this one, because we thought it would be more interesting}
+\begin{table}
+  \caption{Number and type of requests in the workload}
+  \centering
+  \begin{tabular}{|c|c|}
+     \hline
+          Number of Requests & Request \\
+     \hline
+      1 & Viewing number of user tweets \\
+      1 & Viewing number of users by country \\
+      3 & Registering users \\
+      6 & Creating tweets \\
+     25 & Logging in \\
+     50 & Viewing tweets from a user \\
+     \hline
+  \end{tabular}
+  \label{Tab:ratios}
+\end{table}
 
+In the end, we are performing 77 reads for each 9 writes, a distribution of 90\% reads and 10\% writes. This workload not only represents what we consider good values to test a real scenario of a Twitter-like application using this database, but also the typical distribution of operations in most Database Management Systems.\footnote{We had 2 more workloads only testing either read-only or write-only operations, but due to the time it took to obtain results for a single one, we had to opt to only use this one, because we thought it would be more interesting}
+
+
+\section{Experimental Design}
+% Experimental Design: description and justification of the selected experimental design
+
+Taking into account on how a Cassandra system works, its components and their interaction, we defined some parameters to be evaluated in order to determine their impact on the overall Cassandra performance, in fine-grained way.
+
+The chosen parameters to be evaluated are the following:
+
+\begin{itemize}
+    \item Consistency Level: \emph{ONE} (1 replica) vs \emph{QUORUM}
+    \item Latency between nodes: Nodes in \emph{1} vs \emph{3} availability zones
+    \item Machine Specifications: \emph{c5.xlarge} vs \emph{c5.2xlarge}
+    \item Memtable Size: \emph{512MB} vs \emph{2048MB}
+    \item Row Cache: \emph{Absent} vs \emph{512 MB}
+    \item Replication Strategy: \emph{SimpleStrategy} vs \emph{NetworkTopologyStrategy}
+\end{itemize}
+
+From all these factors, the one we suspected would have the biggest impact over performance was the \textbf{consistency} factor, since it would determine how many replicas need to be contacted to satisfy the request.
+
+We also thought the \textbf{latency} between replicas would greatly impact the system, as it is replicated and when used along with the \textbf{QUORUM} consistency level, more replicas need to be contacted, so they would need to communicate between themselves in order to reach an agreement, and the probability of contacting a node in another availability zone is high.
+
+The \textbf{machine specifications} were considered to have a great impact also, due to the fact that the official Cassandra documentation\footnote{\url{https://cassandra.apache.org/doc/latest/cassandra/operating/hardware.html}} provides two recommendations for hardware requirements:
+
+\begin{itemize}
+    \item 2 CPU cores and 8 GB of RAM as a \underline{minimal} requirement
+    \item 8 CPU cores and 32 GB of RAM for typical \underline{production} environments
+\end{itemize}
+
+The big disparity between the presented specs is interesting, so we decided to verify how important these recommendations could be by testing this factor, as it would make sense that exchanging between these 2 types of machines would make a big difference, those types being the \textbf{c5.xlarge} and the \textbf{c5.2xlarge}. These instances present the following specs\footnote{It was not possible to test with the actual stated requirements due to AWS's quota limits}:
+\begin{itemize}
+    \item c5.xlarge
+    \begin{itemize}
+        \item 4 vCPUs
+        \item 8 GB of RAM
+        \item 10 Gbps of Bandwidth
+    \end{itemize}
+    \item c5.2xlarge
+    \begin{itemize}
+        \item 8 vCPUs
+        \item 16 GB of RAM
+        \item 10 Gbps of Bandwidth
+    \end{itemize}
+\end{itemize}
+
+Both the \textbf{Memtable} and the \textbf{Row Cache} are features of Cassandra, implemented in order to optimise write and read operations respectively, and so we deemed them relevant for our study. For the Row Cache we defined that we want to store 100 entries of each of the tables of our application, and we do this at the time of their creation. We thought this was a reasonable value for our tests, since we don't want to cache very infrequently accessed data but we also don't want to have a lot of cache misses.
+For the memtable, we decided to test with the default value of 2048MB because it would serve as the baseline for comparison with the other value we chose, 512MB, that would fit a lot less mappings to the SSTables and we think will have a noticeable performance impact.
+
+Finally, the \textbf{Replication Strategy} factor was chosen in order to verify if there was a difference between the 2 different replication strategies Cassandra supports:
+
+\begin{itemize}
+    \item \emph{SimpleStrategy}
+    \item \emph{NetworkTopologyStrategy}
+\end{itemize}
+
+For production environments, the \emph{NetworkTopologyStrategy} is always the recommended strategy by Apache. We believe this recommendation is due to the overall reliability of the system and due to the flexibility presented by the referred strategy when compared to the \emph{SimpleStrategy} and not necessarily due to performance issues. Nonetheless, we considered relevant to analyse this factor to clear our doubts on this subject and to check if a cluster deployed using \emph{SimpleStrategy} is equivalent to a cluster deployed using the \emph{NetworkTopologyStrategy}.
+
+Since the total number of factors we have to analyse is 6 and we defined 2 levels for each one of them ($2^6$ Factorial Design), we would have to perform a total of 64 tests, and since our tests take a long time to execute, this would be practically impossible to execute in the limited amount of time we have.
+
+To solve this issue, we decided we had to choose 3 factors we would have to confound, to reduce the number of needed tests to 8, which is a more manageable number of tests. From the presented ones, we decided that since we believe latency, consistency and machine specs will have a greater impact in the observed throughput, they shouldn't be confounded, so we can analyse their effects more deeply.
+
+The remaining factors would need to be confounded and so we decided the \underline{memtable} factor would be confounded with the interaction between latency and machine specs, the \underline{row cache} would be confounded with the interaction between machine specs and consistency level and the \underline{replication strategy} would be confounded with the interaction between latency and the consistency level.
+
+We now present in \textbf{Table~\ref{Tab:tests}} the tests we will perform along with the level of each factor in that test.
+
+\begin{table}
+  \caption{Variation of factors that will be tested}
+  \centering
+  \begin{tabular} {|c|c|c|c|c|c|c|} 
+    \hline
+   Test & No. of AZ & Machine type & Consistency & MemTable & Row Cache & Replication \\
+    \hline
+   Test 1 & 1 & c5.xlarge & ONE & 2048 MB & 512 MB & Network \\ 
+    \hline
+   Test 2 & 1 & c5.xlarge  & QUORUM & 2048 MB & Absent & Simple \\
+    \hline
+   Test 3 & 1 & c5.2xlarge  & ONE & 512 MB & Absent & Network \\
+    \hline
+   Test 4 & 1 & c5.2xlarge  & QUORUM & 512 MB & 512 MB & Simple \\
+    \hline
+   Test 5 & 3 & c5.xlarge  & ONE & 512 MB & 512 MB & Simple \\
+    \hline
+   Test 6 & 3 & c5.xlarge  & QUORUM & 512 MB &  Absent & Network \\
+    \hline
+   Test 7 & 3 & c5.2xlarge  & ONE & 2048 MB &  Absent & Simple \\
+    \hline
+   Test 8 & 3 & c5.2xlarge  & QUORUM & 2048 MB & 512 MB & Network \\
+    \hline
+  \end{tabular}
+  \label{Tab:tests}
+\end{table}
 
 \section{Results}
-% Results: presentation and discussion of the scalability, performance and stage  pipeline experiments conducted, together with any additional information the group deems relevant to understand the obtained results
+% Results: presentation and discussion of the experimental design, scalability and performance experiments conducted, together with any additional information the group deems relevant to understand the obtained results
 
-In order to obtain better results, we deployed Cassandra in the AWS Cloud, in a Kubernetes cluster with a load balancer, and also allocated an EC2 instance (with 4 vCPUs) to perform the tests, which allowed us to reduce the latency and hopefully get better results.\par
+We performed 2 main separate experiments with two different goals:
+\begin{itemize}
+    \item Measure the scalability of the Apache Cassandra system using the \textbf{QUORUM} consistency level
+    \item Measure the impact of our selected factors in the overall throughput of Apache Cassandra
+\end{itemize}
+
+In order to obtain the best results for our tests, we deployed Cassandra in the AWS Cloud, in a Kubernetes cluster composed of 5 worker nodes, with a load balancer in front of it. We also allocated an EC2 instance for each of the experiments, so we could reduce latency and achieve (ideally) the maximum throughput. All tests were executed in the region of US East N. Virginia and between executions of different tests we erased the database, so we could get the less percentage of errors.
+
+\subsection{Testing the system scalability}
+
+The allocated VM instance has 4 vCPUs, and is in the same availability zone as the cluster.\par
 
 For our experiments, we used the \emph{SimpleStrategy} for replication, because it is simpler to setup and doesn't require us to say in which datacenter and rack each Cassandra node is placed. We went for a replication factor of 3 - so data is stored in 3 Cassandra nodes -, which we considered a reasonable number, since our main goal is not to test reliability, so we decided not to keep it too high, but also not too low.\par
 
-We chose the \textbf{QUORUM} consistency level, which implies that a majority of replicas (that hold the data, in our case at least 2 when using 2 or more nodes) answer to the query, ensuring we have \underline{strong consistency}. In case there is only one replica, we had to change the consistency level to \textbf{LOCAL\_ONE} (which relies in only one replica), because we couldn't get a quorum of replicas.\par
+We chose the \textbf{QUORUM} consistency level, which implies that a majority of replicas (that hold the data, in our case at least 2 when using 2 or more nodes) answer to the query, ensuring we have \underline{strong consistency}. In case there is only one replica, we had to change the consistency level to \textbf{LOCAL\_ONE} (which relies in only one replica), because we couldn't get a quorum of replicas. Besides running the tests with 1 or 2 replicas not allowing us to obtain a quorum of replicas, we decided to present them and count them, because it allows us to have an insight on what would happen with those numbers.\par
 
-The tool ran with multiple threads, increasing from 4 (the number of vCPUs) to 1000, and each time it would sum half the current thread count to the current number, to obtain the next number of threads to be used (default behaviour). This is good for us, because it allows us to fully utilize the CPUs, since the tool uses batches and (we perceived) it waits for output before sending the next one. Also, for each thread count, the test would run until the \underline{standard deviation} of the results got under \textbf{0.2}, which is a behavior built in to it, if we don't state for how long we want the test to run, and we thought this could improve the liability of the data retrieved.\par
+The tool ran with multiple threads, increasing from 4 (the number of vCPUs) to 1000, using the following formula:
 
-The results obtained are expressed in the following graph:
+\[ n_i = n_{i-1} + \frac{n_{i-1}}{2} \]
+
+where $n_i$ represents the current number of threads, and $n_{i-1}$ represents the number of threads used in the previous iteration. The initial number of threads is given by us and it will then iterate all the way to 1000 by default.
+
+ This is good for us, because it allows us to fully utilise the CPUs, since the tool uses batches and (we perceived) it waits for output before sending the next one, and with this approach we are able to more efficiently use our CPU and get the best throughput. Also, for each thread count, the test would run until the \underline{standard deviation} of the results got under \textbf{0.2}, which is a behaviour built in to it, if we don't state for how long we want the test to run, and we thought this could improve the liability of the data retrieved, since we only stop the testing when the variance of our data is small, we can have high confidence on the obtained results.\par
+
+The results obtained are expressed in the graph in \textbf{Figure~\ref{Graph:scalability}}.
 
 \begin{figure}
     \begin{center}
@@ -108,7 +224,7 @@ The results obtained are expressed in the following graph:
                 ylabel = {Throughput (ops/s)},
                 title = {Maximum throughput per number of nodes},
             ]
-                \addplot gnuplot [raw gnuplot, draw = none] {plot 'result.dat' title "Obtained" index 0};
+                \addplot gnuplot [raw gnuplot, draw = none] {plot 'data/part1.dat' title "Obtained" index 0};
                 \addlegendentry{Measured}
                 \addplot gnuplot [raw gnuplot, mark = none] {set xrange[0:7]; plot ((10926.9936043015*x)/(1 + 2.1853462545 * (x + 1) +  0.0326683783 * x * (x-1))) index 1};
                 \addlegendentry{Regression}
@@ -116,14 +232,15 @@ The results obtained are expressed in the following graph:
         \end{tikzpicture}
     \end{center}
     \caption{Apache Cassandra measured throughput and scalability function}
+    \label{Graph:scalability}
 \end{figure}
 
 We can see there is a big drop when we change from 1 to 2 nodes, or even 3, because the number of replicas we need to contact increases, due to the consistency level used. After that, increasing the number of nodes in the cluster doesn't affect the number of requests we are able to serve because the replication factor is 3, so the number of replicas contacted by the coordinator stays roughly the same.
-We observe some variance possibly due to the load balancer can select any of the deployed nodes, so the coordinator may or may not hold the data we want to retrieve, and in the latter case, we need to contact 3 more nodes, while in the former, we only contact 2.\par
+We observe some variance possibly due to the load balancer selecting any of the deployed nodes, so the coordinator may or may not hold the data we want to retrieve, and in the latter case, we need to contact 3 more nodes, while in the former, we only contact 2.\par
 
 The fluctuations observed when using a number of nodes between 3 and 6 can be justified because Cassandra is developed in Java and since we make really big tests, a part of the time might be spent doing garbage collection which really impacts performance, or even writing to disk since our tool generates a lot of traffic, but we can observe that it stays at around 5300 operations \textit{per} second. \par
 
-With the obtained results, we then made a regression using a tool provided in the labs, in order to calculate an estimate on the scalability parameters and calculate the scalability function for this system. The obtained expression, also drawn in the graph, is:
+With the obtained results, we then made a regression using a tool provided in the laboratory classes, in order to calculate an estimate on the scalability parameters and calculate the scalability function for this system. The obtained expression, also drawn in the graph, is:
 
 \[ \frac{10926.9936043015 * N}{1 + 2.1853462545 * (N + 1) +  0.0326683783 * N * (N - 1)} \]
 
@@ -131,11 +248,252 @@ With this information, we can see that this system has very high performance wit
 
 We can see that this system, with our workload and selected consistency level, has \textbf{poor scalability}, since when we start adding more nodes to the database, throughput starts decreasing. One way to counter this, would be to relax our query restrictions (\emph{i.e.} the consistency) so that the synchronization portion of the pipeline could be decreased. Another option would be to store data at only 1 node, without replicas, completely eliminating the serial portion of the pipeline, at the cost of decreasing reliability.
 
+\subsection{Measuring the impact of each factor}
+
+For this experiment, we also used the AWS Cloud to achieve the best results we could, \emph{i.e.} reducing the latency and possible scheduling issues we would suffer if it was running in our personal machine. Cassandra was deployed in a Kubernetes cluster, as it was last time, but with the configurations we mentioned in \textbf{Table~\ref{Tab:tests}}. To run our tests, we used an EC2 instance of type \textbf{c5.2xlarge} to get the best possible results.
+
+Either when using the \emph{SimpleStrategy} or the \emph{NetworkTopologyStrategy}, we defined a replication factor of 4 for our data, which means that a quorum will have 3 replicas and we need to necessarily contact replicas in at least 2 different availability zones. When using the \emph{NetworkTopologyStrategy}, we decided to put all the nodes in the same datacenter (datacenter1) and also in the same rack (rack1) as we want to test the differences in performance between this strategy and \emph{SimpleStrategy}, and it would only change the way data is replicated, for reliability reasons, and since we have only 6 replicas in total, this effect wouldn't be noticed.
+
+Some of the factors needed to be changed at the deployment level and others could be changed on the client side, and for the last ones, we changed only the necessary settings in our workload files.
+
+The results we obtained with the tests we defined in \textbf{Table~\ref{Tab:tests}} are now expressed in \textbf{Table~\ref{Tab:throughput}}, where we can observe the output for each configuration.
+
+\begin{table}
+  \caption{Throughput obtained in each of the tests}
+  \centering
+  \begin{tabular}{|c|c|}
+    \hline
+      Test & Throughput (ops/s) \\
+    \hline
+      Test 1 & 10784 \\
+      Test 2 & 7652  \\
+      Test 3 & 14016 \\
+      Test 4 & 7798  \\
+      Test 5 & 8381  \\
+      Test 6 & 6183  \\
+      Test 7 & 17309 \\
+      Test 8 & 9875  \\
+    \hline
+  \end{tabular}
+  \label{Tab:throughput}
+\end{table}
+
+As we mentioned before, our tool has a few limitations, and we ran it as we stated before, however, we increased the minimum number of threads to 181, to decrease the execution time of each test, as it was a number that was reached by the tool and we observed (in the previous experiment) that the highest throughput couldn't be reached with a thread count less than or equal to this value.
+
+We were only able to run all the experiments 1 time because we would need a lot of time to make at least 3 runs to obtain 3 replications (each test takes around 1 hour to execute). So, in order to obtain the effect of each factor we resorted to the data points where the average throughput was the highest, since they represent a test with a given thread count.
+
+The tool outputs the instant throughput every second until the test ends, and since we selected the data points which correspond to the highest throughput measured, and they fluctuate around the average throughput level they are a good approximation on what would be the results if we ran the tests multiple times. The obtained graphs can be seen in \textbf{Appendix~\ref{Appendix:graphs}}. Due to this, we can divide the data in 3 groups of consecutive points, and calculate the average value of each one in order to obtain the value of a replication.
+
+We had to follow this approach due to the time constraints we had, although we know it doesn't correspond to the real replications. However, we believe it is a really good approximation, because we have enough variance in the data so we have confidence in the replications we obtained.
+
+In Table~\ref{Tab:replications} we represented the replications we obtained for each test.
+
+\begin{table}[H]
+  \caption{Replications obtained from the datapoints}
+  \centering
+  \begin{tabular}{|c|c|c|}
+    \hline
+    Test & Replications & Average \\
+    \hline
+    Test 1 & 10339.8 , 10923.5 , 11338.8  & 10784 \\
+    \hline
+    Test 2 &  7495.77,  7797.54,  7667.73 &  7652 \\
+    \hline
+    Test 3 & 14423.8 , 13720.5 , 13984.5  & 14016 \\
+    \hline
+    Test 4 &  8066.85,  7475.01,  7847.75 &  7798 \\
+    \hline
+    Test 5 &  9520.7 ,  8166.8 ,  7607.1  &  8381 \\ 
+    \hline
+    Test 6 &  6464.1 ,  6193.8 ,  5887.4  &  6183 \\
+    \hline
+    Test 7 & 16502   , 18101.4 , 17821.7  & 17309 \\
+    \hline
+    Test 8 & 10291.23,  9979.24,  9373.22 &  9875 \\
+    \hline
+  \end{tabular}
+  \label{Tab:replications}
+\end{table}
+
+Now, with all this information, we are able to find the variation of each of the chosen factors in the performance of Apache Cassandra, for our workload, and then calculate their effect on the system. \textbf{Table~\ref{Tab:effects}} contains the effect of each of the factors, as well as the effect of the errors in the system that our approach may contain due to the assumptions we have made and to the fact that we didn't obtain real replications.
+
+\begin{table}[H]
+  \caption{Effect of each factor in Apache Cassandra}
+  \centering
+  \begin{tabular}{|c|c|}
+    \hline
+    Factor & Effect (\%) \\
+    \hline
+    Latency between nodes   &  0.29 \\
+    \hline
+    Machine Specifications  & 33.03 \\
+    \hline
+    Consistency Level       & 46.50 \\
+    \hline
+    MemTable Size           & 11.02 \\
+    \hline
+    Row Cache               &  8.94 \\
+    \hline
+    Replication Strategy    &  0.01 \\
+    \hline
+    Errors                  &  0.22 \\
+    \hline
+  \end{tabular}
+  \label{Tab:effects}
+\end{table}
+
+% Latency
+From the results on \textbf{Table~\ref{Tab:effects}} we can see that latency doesn't have a big impact on the system performance, so Cassandra nodes can be far from each other and we can still achieve good results.
+
+% Replication
+Since the \emph{replication strategy} is confounded with the interaction between latency and consistency level, we can't separate their effects. However, since the value is so small we can infer that the interaction between the two factors is negligible, as well as the effect of the chosen replication strategy. Contrary to what we believed, using the \textbf{QUORUM} consistency level with nodes separated in different availability zones won't make a big difference in throughput.
+
+% Row cache
+Due to the confounding between the \emph{row cache} factor and the interaction between the machine specifications and the consistency level, we can't conclude anything separately, although we can observe that changing one of these will make some differences in the system, but they won't be that big.
+
+% Machine specs
+Changing from the minimum machine specifications to the recommended, production machine specifications has a huge impact in Cassandra performance, so, if we would have to make a change in our system, we would probably change the machines we are using to use some that are more powerful to increase the database throughput.
+
+% MemTable
+The \emph{memtable size} is confounded with the interaction between latency and machine specifications, so we can only explain their simultaneous impact on the system. We can see that it is the third highest impacting on the Cassandra cluster, but it is still very low compared to the other two. In order to properly determine if memtable is really an impacting factor or if it's the other one, we would need to run more tests, without memtable being a confounded factor.
+
+% Consistency
+Finally, and as one would expect, changing the consistency level from \textbf{QUORUM} to \textbf{ONE} has a huge effect in the overall system performance, but we weren't expecting this to be the most impactful factor, from the ones we chose. We can see that the factor that performs the biggest changes in our Cassandra database is the consistency level used by an application - in our case, a Twitter-like one - and so, in case of limited budget situations, it would be the best one to change to improve the system performance.
+
 \section{Conclusion}
 % Conclusion: discussion of the main insights obtained
 
-In this work, we took a high level analysis at the Apache Cassandra database in order to analyze its scalability. We implemented a very naive version of a Twitter-like application, so we could better abstract our workload and reason about the queries we would like to make. The chosen consistency level was too high, which made us conclude that Cassandra can't properly scale for our application, however we can conclude that for other applications, with lower consistency requirements, Cassandra can be a game changer, because in our the system didn't start decreasing the throughput indefinitely, only until the appropriate number of replicas was launched, and probably if we relaxed our requirements, the results would be pretty different.\par
+% OLD: In this work, we took a high level analysis at the Apache Cassandra database in order to analyze its scalability. We implemented a very naive version of a Twitter-like application, so we could better abstract our workload and reason about the queries we would like to make. The chosen consistency level was too high, which made us conclude that Cassandra can't properly scale for our application, however we can conclude that for other applications, with lower consistency requirements, Cassandra can be a game changer, because in our the system didn't start decreasing the throughput indefinitely, only until the appropriate number of replicas was launched, and probably if we relaxed our requirements, the results would be pretty different.\par
+
+In this work, we started by taking a high level analysis at the Apache Cassandra, to analyze its scalability, and later took a deeper look and decided on some factors that could impact the performance of it. We implemented a very naive version of a Twitter-like application, so we could better abstract our workload and reason about the queries we would like to make.
+
+In the first analysis, we used strong consistency and although the throughput was higher with 1 and 2 replicas than using the other node values, this number of replicas was not enough to make a quorum, so the real results only start with 3 replicas, and we can see that adding more replicas to the system, won't increase or even decrease the overall throughput.
+
+In our second analysis, we concluded that the most impacting factors are the consistency level selected by the application using Cassandra and the machine specifications of each of the nodes running this database, respectively, which means that if we have a limited budget and want to further improve the performance of Apache Cassandra, we would definitely want to first lower our application requirements and as a second option choose better machines to deploy this database. We can't conclude anything about the memtable, because it is confounded, but its effect is too low compared to the other two, so we can conclude it won't have much impact in the performance. This also happens to the other confounded factors, but since they all have a small effect, we don't need to take a deeper look at them.
+
+To conclude, we found out that Cassandra scales out pretty well since adding more nodes to the system won't decrease the throughput due to communication overhead, and also found that the consistency level and the machine specifications are the factors that one should take a look at when trying to get the maximum out of our system.
 
 \printbibliography
+
+\begin{subappendices}
+\renewcommand{\thesection}{\Alph{section}}
+
+\newpage
+\section{Instantaneous throughput graphs for each test}
+\label{Appendix:graphs}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+        xlabel = {Time (s)},
+        ylabel = {Throughput (ops/s)},
+    ]
+        \addplot gnuplot [raw gnuplot] {plot 'data/net_row_1.dat' index 0};
+        \addlegendentry{Instant throughput}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Test 1}
+\end{figure}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+        xlabel = {Time (s)},
+        ylabel = {Throughput (ops/s)},
+    ]
+        \addplot gnuplot [raw gnuplot] {plot 'data/simple_no_quorum.dat' index 0};
+        \addlegendentry{Instant throughput}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Test 2}
+\end{figure}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+        xlabel = {Time (s)},
+        ylabel = {Throughput (ops/s)},
+    ]
+        \addplot gnuplot [raw gnuplot] {plot 'data/net_no_1.dat' index 0};
+        \addlegendentry{Instant throughput}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Test 3}
+\end{figure}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+        xlabel = {Time (s)},
+        ylabel = {Throughput (ops/s)},
+    ]
+        \addplot gnuplot [raw gnuplot] {plot 'data/simple_row_quorum.dat' index 0};
+        \addlegendentry{Instant throughput}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Test 4}
+\end{figure}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+        xlabel = {Time (s)},
+        ylabel = {Throughput (ops/s)},
+    ]
+        \addplot gnuplot [raw gnuplot] {plot 'data/simple_row_1.dat' index 0};
+        \addlegendentry{Instant throughput}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Test 5}
+\end{figure}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+        xlabel = {Time (s)},
+        ylabel = {Throughput (ops/s)},
+    ]
+        \addplot gnuplot [raw gnuplot] {plot 'data/net_no_quorum.dat' index 0};
+        \addlegendentry{Instant throughput}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Test 6}
+\end{figure}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+        xlabel = {Time (s)},
+        ylabel = {Throughput (ops/s)},
+    ]
+        \addplot gnuplot [raw gnuplot] {plot 'data/simple_no_1.dat' index 0};
+        \addlegendentry{Instant throughput}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Test 7}
+\end{figure}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+        xlabel = {Time (s)},
+        ylabel = {Throughput (ops/s)},
+    ]
+        \addplot gnuplot [raw gnuplot] {plot 'data/net_row_quorum.dat' index 0};
+        \addlegendentry{Instant throughput}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Test 8}
+\end{figure}
+
+\end{subappendices}
 
 \end{document}
